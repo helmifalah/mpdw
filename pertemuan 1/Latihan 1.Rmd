@@ -1,1 +1,24 @@
+---
+title: "Untitled"
+author: "Helmi Falah"
+date: "2025-08-24"
+output: html_document
+---
 
+```{r, warning=F}
+#packages sudah diinstall
+library(forecast)
+library(graphics)
+library(TTR)
+library(TSA)
+library(aTSA)
+library(lmtest)
+library(MLmetrics)
+library(car)
+library(dplyr)
+library(MASS)
+library(tsibble)
+library(tseries)
+library(ggplot2)
+library(nortest)
+```
