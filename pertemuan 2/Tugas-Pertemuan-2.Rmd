@@ -1,0 +1,298 @@
+---
+title: "Tugas-Pertemuan-2"
+author: "Helmi Falah"
+date: "2025-09-01"
+output:
+    rmdformats::readthedown
+---
+
+# Import Library
+```{r}
+library(readxl)
+library(ggplot2)
+library(TTR)
+library(forecast)
+library(Metrics)
+library(tidyr)
+library(dplyr)
+```
+
+# Import Data
+```{r}
+library(readxl)
+tesladf <- read_excel("D:\\Doc Helmi\\Semester 5\\MPDW\\mpdw\\pertemuan 2\\TSLA_weekly.xlsx")
+head(tesladf)
+```
+```{r}
+#ambil variabel Periode dan Close
+tesladf <- tesladf[199:300, c("Periode", "Close")]
+head(tesladf)
+```
+# Eksplorasi Data
+
+```{r}
+str(tesladf)
+dim(tesladf)
+```
+```{r}
+tesladf.ts <- ts(tesladf$Close)
+tesladf.ts
+```
+
+menampilkan ringkasan data
+```{r}
+summary(tesladf.ts)
+```
+Membuat plot data deret waktu
+```{r}
+ts.plot(tesladf.ts, xlab="Time Period ", ylab="Reading", 
+        main = "Time Series Plot")
+points(tesladf.ts)
+```
+
+# Split Data
+
+```{r}
+# hitung jumlah data
+n <- nrow(tesladf)
+
+# tentukan batas 80%
+n_train <- floor(0.8 * n)
+
+# bagi data
+training_ma <- tesladf[1:n_train, ]
+testing_ma  <- tesladf[(n_train+1):n, ]
+
+# ubah ke time series
+train.ts <- ts(training_ma$Close)
+test.ts  <- ts(testing_ma$Close)
+
+test_dates <- tesladf$Periode[(n_train+1):n]
+```
+
+```{r}
+# Plot train & test
+plot(train.ts, col="blue",main="Plot Data Latih")
+points(train.ts)
+
+plot(test.ts, col="blue",main="Plot Data Uji")
+points(test.ts)
+```
+
+```{r}
+# Data frame untuk train
+train_df <- data.frame(
+  Period = 1:length(train.ts),   # indeks dari 1 sampai panjang train
+  Sales = as.numeric(train.ts),
+  Tipe = "Data Latih"
+)
+
+# Data frame untuk test
+test_df <- data.frame(
+  Period = (length(train.ts)+1):(length(train.ts)+length(test.ts)),  # lanjut dari akhir train
+  Sales = as.numeric(test.ts),
+  Tipe = "Data Uji"
+)
+
+# Gabung jadi satu
+plot_df <- rbind(train_df, test_df)
+
+library(ggplot2)
+# Plot
+ggplot(plot_df, aes(x = Period, y = Sales, col = Tipe)) + 
+  geom_line() +
+  labs(x = "Periode Waktu", y = "Sales", color = "Keterangan:") +
+  scale_colour_manual(values = c("Data Latih" = "blue", "Data Uji" = "red")) +
+  theme_bw() + 
+  theme(legend.position = "bottom",
+        plot.caption = element_text(hjust=0.5, size=12))
+
+```
+
+
+# Forecast tiap model
+
+```{r}
+cat("=== FORECASTING ANALYSIS ===\n")
+cat("Training data length:", length(train.ts), "\n")
+cat("Test data length:", length(test.ts), "\n\n")
+
+# --------------------------------------------------------------------
+# 4.1 Simple Moving Average (SMA)
+# --------------------------------------------------------------------
+cat("1. Processing SMA model...\n")
+sma <- SMA(train.ts, n = )
+sma_fitted <- sma
+sma_forecast <- rep(tail(na.omit(sma), 1), length(test.ts))
+
+acc_sma <- data.frame(
+  Model = "SMA",
+  SSE = sum((test.ts - sma_forecast)^2),
+  MSE = mean((test.ts - sma_forecast)^2),
+  MAE = mae(test.ts, sma_forecast),
+  RMSE = rmse(test.ts, sma_forecast),
+  MAPE = mape(test.ts, sma_forecast)
+)
+
+# --------------------------------------------------------------------
+# 4.2 Double Moving Average (DMA)
+# --------------------------------------------------------------------
+cat("2. Processing DMA model...\n")
+dma <- SMA(na.omit(sma))
+dma_fitted <- dma
+dma_forecast <- rep(tail(na.omit(dma), 1), length(test.ts))
+
+acc_dma <- data.frame(
+  Model = "DMA",
+  SSE = sum((test.ts - dma_forecast)^2),
+  MSE = mean((test.ts - dma_forecast)^2),
+  MAE = mae(test.ts, dma_forecast),
+  RMSE = rmse(test.ts, dma_forecast),
+  MAPE = mape(test.ts, dma_forecast)
+)
+
+# --------------------------------------------------------------------
+# 4.3 Simple Exponential Smoothing (SES)
+# --------------------------------------------------------------------
+cat("3. Processing SES model...\n")
+ses_model <- ses(train.ts, h = length(test.ts))
+ses_fitted <- ses_model$fitted
+ses_forecast <- as.numeric(ses_model$mean)
+
+acc_ses <- data.frame(
+  Model = "SES",
+  SSE = sum((test.ts - ses_forecast)^2),
+  MSE = mean((test.ts - ses_forecast)^2),
+  MAE = mae(test.ts, ses_forecast),
+  RMSE = rmse(test.ts, ses_forecast),
+  MAPE = mape(test.ts, ses_forecast)
+)
+
+# --------------------------------------------------------------------
+# 4.4 Double Exponential Smoothing (DES/Holt)
+# --------------------------------------------------------------------
+cat("4. Processing DES model...\n")
+des_model <- holt(train.ts, h = length(test.ts))
+des_fitted <- des_model$fitted
+des_forecast <- as.numeric(des_model$mean)
+
+acc_des <- data.frame(
+  Model = "DES",
+  SSE = sum((test.ts - des_forecast)^2),
+  MSE = mean((test.ts - des_forecast)^2),
+  MAE = mae(test.ts, des_forecast),
+  RMSE = rmse(test.ts, des_forecast),
+  MAPE = mape(test.ts, des_forecast)
+)
+
+# --------------------------------------------------------------------
+# 4.5 Holt-Winters (Triple Exponential Smoothing)
+# --------------------------------------------------------------------
+cat("5. Processing Holt-Winters model...\n")
+hw_model <- HoltWinters(train.ts, beta = TRUE, gamma = FALSE)
+hw_fitted <- hw_model$fitted[, 1]
+hw_forecast <- forecast(hw_model, h = length(test.ts))
+hw_forecast_values <- as.numeric(hw_forecast$mean)
+
+acc_hw <- data.frame(
+  Model = "Holt-Winters",
+  SSE = sum((test.ts - hw_forecast_values)^2),
+  MSE = mean((test.ts - hw_forecast_values)^2),
+  MAE = mae(test.ts, hw_forecast_values),
+  RMSE = rmse(test.ts, hw_forecast_values),
+  MAPE = mape(test.ts, hw_forecast_values)
+)
+
+# --------------------------------------------------------------------
+# 4.6 Gabungkan dan tampilkan hasil akurasi
+# --------------------------------------------------------------------
+cat("\n=== MODEL ACCURACY COMPARISON ===\n")
+acc_all <- rbind(acc_sma, acc_dma, acc_ses, acc_des, acc_hw)
+
+# Format angka untuk tampilan yang lebih rapi
+acc_all_formatted <- acc_all %>%
+  mutate(
+    SSE = round(SSE, 2),
+    MSE = round(MSE, 4),
+    MAE = round(MAE, 4),
+    RMSE = round(RMSE, 4),
+    MAPE = round(MAPE, 4)
+  )
+
+print(acc_all_formatted)
+
+# Temukan model terbaik berdasarkan RMSE
+best_model <- acc_all_formatted[which.min(acc_all_formatted$RMSE), ]
+cat("\n=== BEST MODEL (Lowest RMSE) ===\n")
+cat("Model:", best_model$Model, "\n")
+cat("RMSE:", best_model$RMSE, "\n")
+cat("MAPE:", paste0(best_model$MAPE, "%"), "\n\n")
+
+# ====================================================================
+# 5. VISUALISASI PERBANDINGAN FORECAST
+# ====================================================================
+
+cat("=== CREATING FORECAST COMPARISON PLOT ===\n")
+
+# Siapkan data untuk plotting
+forecast_df <- data.frame(
+  tanggal = test_dates,
+  SMA = sma_forecast,
+  DMA = dma_forecast,
+  SES = ses_forecast,
+  DES = des_forecast,
+  `Holt-Winters` = hw_forecast_values,
+  Actual = as.numeric(test.ts),
+  check.names = FALSE  # Mempertahankan nama kolom dengan tanda hubung
+)
+
+# Ubah ke format long untuk ggplot
+forecast_long <- forecast_df %>%
+  pivot_longer(
+    cols = -tanggal,
+    names_to = "Model",
+    values_to = "Kurs_Beli"
+  ) %>%
+  mutate(
+    Model = factor(Model, levels = c("Actual", "SMA", "DMA", "SES", "DES", "Holt-Winters"))
+  )
+
+# Plot
+forecast_long$index <- seq_along(forecast_long$tanggal)
+
+ggplot(forecast_long, aes(x = index, y = Kurs_Beli, color = Model)) +
+  geom_line(linewidth = 1) +
+  labs(
+    title = "Perbandingan Actual vs Forecast",
+    x = "Index Waktu", y = "Kurs Beli"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 6)
+  )
+
+
+# --------------------------------------------------------------------
+# Summary Statistics
+# --------------------------------------------------------------------
+cat("\n=== FORECAST SUMMARY STATISTICS ===\n")
+
+# Statistik deskriptif untuk data test
+cat("Test Data Statistics:\n")
+cat("Min:", round(min(test.ts), 0), "\n")
+cat("Max:", round(max(test.ts), 0), "\n")
+cat("Mean:", round(mean(test.ts), 0), "\n")
+cat("Std Dev:", round(sd(test.ts), 0), "\n\n")
+
+# Ranking model berdasarkan berbagai metrik
+cat("Model Ranking (Best to Worst):\n")
+cat("By RMSE:", paste(acc_all_formatted[order(acc_all_formatted$RMSE), ]$Model, collapse = " > "), "\n")
+cat("By MAE: ", paste(acc_all_formatted[order(acc_all_formatted$MAE), ]$Model, collapse = " > "), "\n")
+cat("By MAPE:", paste(acc_all_formatted[order(acc_all_formatted$MAPE), ]$Model, collapse = " > "), "\n")
+
+cat("\n=== ANALYSIS COMPLETE ===\n")
+```
+
+# Kesimpulan
+Berdasarkan hasil evaluasi model peramalan pada data deret waktu saham Tesla, terlihat bahwa metode Single Exponential Smoothing (SES) dan Double Exponential Smoothing (DES) memberikan kinerja terbaik dibandingkan model lainnya, ditunjukkan oleh nilai error yang konsisten paling rendah pada hampir semua metrik (SSE, MSE, MAE, RMSE, dan MAPE), dengan MAPE sekitar 10% yang mengindikasikan tingkat akurasi cukup tinggi. Sebaliknya, model Simple Moving Average (SMA) dan Double Moving Average (DMA) hanya memberikan hasil moderat, sementara Holt-Winters menunjukkan performa terburuk dengan error yang relatif besar (MAPE di atas 30%), kemungkinan karena data saham Tesla tidak memiliki pola musiman yang jelas. Dengan demikian, model berbasis smoothing sederhana seperti SES dan DES lebih sesuai digunakan untuk meramalkan pergerakan saham Tesla yang cenderung dipengaruhi oleh tren ketimbang pola musiman. Insight yang dapat diambil adalah bahwa pergerakan harga saham Tesla lebih dominan dipengaruhi oleh faktor tren jangka pendek hingga menengah, sehingga metode peramalan yang mengandalkan smoothing sederhana sudah cukup efektif, sementara model dengan komponen musiman justru tidak relevan dan cenderung menghasilkan error yang lebih besar.
