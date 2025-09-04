@@ -1,0 +1,23 @@
+---
+title: "Pertemuan-2-kuliah"
+author: "Helmi Falah"
+date: "2025-09-04"
+output: 
+    rmdformats::readthedown
+---
+
+
+# Import Library
+
+```{r}
+library(readxl)
+library(lmtest)
+```
+
+# Import Data
+
+```{r}
+
+```
+
+# Pemodelan
