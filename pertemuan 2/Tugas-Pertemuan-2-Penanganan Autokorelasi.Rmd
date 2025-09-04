@@ -12,12 +12,219 @@ output:
 ```{r}
 library(readxl)
 library(lmtest)
+library(orcutt)
+library(HoRM)
 ```
 
 # Import Data
 
 ```{r}
-
+ipmbkt <- read_excel("D:\\Doc Helmi\\Semester 5\\MPDW\\mpdw\\pertemuan 3\\ipmbukittingi.xlsx")
+ipmbkt
 ```
 
-# Pemodelan
+```{r}
+#Membentuk objek time series
+ipmbkt.ts<-ts(ipmbkt$IPM)
+ipmbkt.ts
+```
+```{r}
+#Membuat plot time series
+ts.plot(ipmbkt.ts, xlab="Time Period ", ylab="IPM", main= "Time Series Plot of IPM")
+points(ipmbkt.ts)
+```
+Terlihat dari plot terdapat tren pada data IPM Bukittinggi.
+
+
+# Pemodelan Regresi
+
+```{r}
+modelipm <- lm(IPM ~ Tahun, data = ipmbkt)
+summary(modelipm)
+```
+Model regresi linier sederhana menunjukkan bahwa IPM meningkat seiring bertambahnya tahun dengan laju sekitar 0.446 poin per tahun. Model ini sangat baik (R² ≈ 98%) sehingga bisa digunakan untuk prediksi IPM berdasarkan tahun. Dengan Persamaan Regresi sebagai berikut :
+$$IPM = -820.289 + 0.446 \times Tahun$$
+Namun Untuk memastikan validitas model, perlu dilakukan diagnostik sisaan untuk memeriksa asumsi klasik regresi, terutama autokorelasi.
+
+# Diagnostik
+
+```{r}
+# Sisaan dan fitted value
+sisaan <- residuals(modelipm)
+fitValue <- predict(modelipm)
+
+# Diagnostik dengan eksploratif
+par(mfrow = c(2,2))
+
+# QQ-plot
+qqnorm(sisaan)
+qqline(sisaan, col = "steelblue", lwd = 2)
+
+# Sisaan vs Fitted Values
+plot(fitValue, sisaan, col = "steelblue", pch = 20,
+     xlab = "Fitted Values", ylab = "Sisaan",
+     main = "Sisaan vs Fitted Values")
+abline(h = 0, lwd = 2)
+
+# Histogram sisaan
+hist(sisaan, col = "steelblue", main = "Histogram Sisaan")
+
+# Sisaan vs Order (urutan pengamatan)
+plot(seq_along(sisaan), sisaan, col = "steelblue", pch = 20,
+     xlab = "Order", ylab = "Sisaan",
+     main = "Sisaan vs Order")
+lines(seq_along(sisaan), sisaan, col = "red")
+abline(h = 0, lwd = 2)
+```
+Hasil diagnostik secara eksplorasi menunjukkan bahwa model regresi memenuhi sebagian besar asumsi klasik: residual berdistribusi normal (ditunjukkan oleh Q-Q plot dan histogram sisaan), serta varian residual relatif konstan (tidak ada pola jelas pada plot sisaan terhadap fitted values). Namun, pada plot sisaan terhadap urutan pengamatan terlihat pola naik-turun yang cukup teratur, sehingga terdapat indikasi adanya autokorelasi antar-sisaan. Dengan demikian, meskipun model cukup baik secara normalitas dan homoskedastisitas, perlu dilakukan uji lebih lanjut (misalnya Durbin-Watson atau Hildreth–Lu) untuk memastikan dan menangani kemungkinan autokorelasi pada data deret waktu ini.
+
+```{r}
+# Uji Shapiro-wilk
+shapiro.test(modelipm$residuals)
+```
+Dari Uji Shapiro-Wilk diperoleh p-value sebesar 0.7586 > 0.05, sehingga gagal menolak H0. Dengan demikian, dapat disimpulkan bahwa sisaan berdistribusi normal.
+
+```{r}
+#ACF dan PACF identifikasi autokorelasi
+par(mfrow = c(1,2))
+acf(sisaan)
+pacf(sisaan)
+```
+Plot ACF dan PACF residual menunjukkan adanya autokorelasi yang cukup kuat pada lag 1, ditandai dengan nilai ACF positif signifikan yang melewati batas kepercayaan, sementara lag-lag berikutnya relatif lebih kecil. Pola ini mengindikasikan bahwa residual dari model regresi tidak sepenuhnya acak, melainkan masih memiliki ketergantungan antarperiode, khususnya berbentuk autokorelasi AR(1). Dengan demikian, meskipun model sudah menjelaskan hubungan utama antara IPM dan Tahun, perlu dilakukan koreksi atau penanganan autokorelasi (misalnya dengan uji Durbin-Watson, prosedur Hildreth–Lu, atau pendekatan model time series) agar hasil estimasi lebih reliabel.
+
+```{r}
+# Uji Durbin Watson
+dwtest(modelipm)
+```
+Hasil dari Durbin-Watson test menunjukkan nilai statistik sebesar 0.87053 dengan p-value sebesar 0.00216. Dari Tabel Durbin Watson diketahui nilai DL sebesar 1.0450 dan DU sebesar 1.3503, karena nilai DW < DL maka Ini mengindikasikan adanya Autokorelasi positif.
+
+Indikasi Autokorelasi terlihat dari plot ACF & PACF serta uji Durbin Watson, sehingga diperlukan penanganan autokorelasi
+
+
+# Penanganan Autokorelasi
+
+## Metode Cochrane-Orcutt
+
+### Perhitungan dengan Packages orcutt
+```{r}
+modelipm.orcutt <- cochrane.orcutt(modelipm)
+summary(modelipm.orcutt)
+```
+### Perhitungan Manual
+```{r}
+# Ambil rho dari model CO yang sudah ada
+rho <- modelipm.orcutt$rho
+rho
+
+# Ambil data dari ipmbkt
+IPM <- ipmbkt$IPM
+Tahun <- ipmbkt$Tahun
+
+# Transformasi Manual
+IPM.trans <- IPM[-1] - rho * IPM[-length(IPM)]
+Tahun.trans <- Tahun[-1] - rho * Tahun[-length(Tahun)]
+
+# Model setelah transformasi Cochrane-Orcutt manual
+modelCOmanual <- lm(IPM.trans ~ Tahun.trans)
+summary(modelCOmanual)
+
+# Mencari penduga koefisien regresi ke persamaan awal
+b0bintang <- modelCOmanual$coefficients[1]  # intercept
+b1 <- modelCOmanual$coefficients[2]         # slope
+b0 <- b0bintang / (1 - rho)
+
+b0
+b1
+```
+
+Hasil regresi dengan metode Cochrane-Orcutt menunjukkan bahwa model telah berhasil mengatasi masalah autokorelasi, terlihat dari nilai Durbin-Watson yang meningkat dari 0,87 (signifikan) menjadi 1,82 (tidak signifikan). Model yang terbentuk signifikan secara keseluruhan (F-test, p < 0,001) dengan R² sebesar 91,9%, artinya sekitar 91,9% variasi nilai IPM dapat dijelaskan oleh variabel Tahun. Koefisien regresi Tahun sebesar 0,4379 dan signifikan (p < 0,001), yang mengindikasikan bahwa setiap kenaikan satu tahun diperkirakan meningkatkan nilai IPM sebesar 0,44 poin. Dengan demikian, model regresi akhir setelah perbaikan autokorelasi dapat dituliskan sebagai:
+$$\hat{Y} = -803.78 + 0.4379 \times Tahun$$
+
+## Metode Hildreth-Lu
+
+```{r}
+# Model awal
+model <- lm(IPM ~ Tahun, data = ipmbkt)
+
+# Fungsi Hildreth-Lu
+hildreth.lu.func <- function(r, model){
+  x <- model.matrix(model)[, -1]   # variabel prediktor (Tahun)
+  y <- model.response(model.frame(model))
+  n <- length(y)
+  t <- 2:n
+  
+  # Transformasi Hildreth-Lu
+  y <- y[t] - r * y[t - 1]
+  x <- x[t] - r * x[t - 1]
+  
+  return(lm(y ~ x))
+}
+
+# Pencarian rho yang meminimumkan SSE
+r <- seq(0.1, 0.9, by = 0.1)
+tab <- data.frame(
+  rho = r,
+  SSE = sapply(r, function(i){
+    deviance(hildreth.lu.func(i, model))
+  })
+)
+
+round(tab, 4)
+```
+Pada hasil di atas terlihat ρ minimum ketika 0.6. Namun, hasil tersebut masih kurang teliti sehingga akan dicari kembali ρ yang lebih optimum dengan ketelitian yang lebih. Jika sebelumnya jarak antar ρ yang dicari adalah 0.1, kali ini jarak antar ρ adalah 0.001 dan dilakukan pada selang 0.2 sampai dengan 0.5.
+
+```{r}
+#Rho optimal di sekitar 0.7
+rOpt <- seq(0.5,0.8, by= 0.001)
+tabOpt <- data.frame("rho" = rOpt, "SSE" = sapply(rOpt, function(i){deviance(hildreth.lu.func(i, model))}))
+head(tabOpt[order(tabOpt$SSE),])
+```
+Dari hasil di atas, diperoleh nilai ρ yang meminimumkan SSE adalah 0.558 dengan nilai SSE sebesar 0.7507096.
+
+```{r}
+#Grafik SSE optimum
+par(mfrow = c(1,1))
+plot(tab$SSE ~ tab$rho , type = "l", xlab = "Rho", ylab = "SSE")
+abline(v = tabOpt[tabOpt$SSE==min(tabOpt$SSE),"rho"], lty = 2, col="red",lwd=2)
+text(x=0.341, y=0.2397500, labels = "rho=0.558", cex = 0.8)
+```
+Perhitungan yang dilakukan aplikasi R menunjukkan bahwa nilai ρ optimum, yaitu saat SSE terkecil terdapat pada nilai ρ=0.558. Hal tersebut juga ditunjukkan pada plot. Selanjutnya, model dapat didapatkan dengan mengevaluasi nilai ρ ke dalam fungsi hildreth.lu.func, serta dilanjutkan dengan pengujian autokorelasi dengan uji Durbin-Watson. Namun, setelah pengecekan tersebut tidak lupa koefisien regresi tersebut digunakan untuk transformasi balik. Persamaan hasil transformasi itulah yang menjadi persamaan sesungguhnya.
+
+```{r}
+#Model terbaik
+modelHL <- hildreth.lu.func(0.558, model)
+summary(modelHL)
+```
+```{r}
+#Transformasi Balik
+cat("y = ", coef(modelHL)[1]/(1-0.558), "+", coef(modelHL)[2],"x", sep = "")
+```
+Setelah dilakukan tranformasi balik, didapatkan model dengan metode Hildreth-Lu sebagai berikut.
+$$\hat{Y} = -803.774 + 0.438 \times Tahun$$
+```{r}
+#Uji Durbin Watson
+dwtest(modelHL)
+```
+Hasil uji Durbin-Watson pada model Hildreth-Lu menunjukkan nilai statistik sebesar 1.8259 dengan p-value sebesar 0.2519. Sehingga autokorelasi tidak terjadi pada model ini.
+
+# Perbandingan SSE 3 metode
+
+```{r}
+#Perbandingan
+sseModelawal <- anova(modelipm)$`Sum Sq`[-1]
+sseModelCO <- anova(modelCOmanual)$`Sum Sq`[-1]
+sseModelHL <- anova(modelHL)$`Sum Sq`[-1]
+mseModelawal <- sseModelawal/length(IPM)
+mseModelCO <- sseModelCO/length(IPM)
+mseModelHL <- sseModelHL/length(IPM)
+akurasi <- matrix(c(sseModelawal,sseModelCO,sseModelHL,
+                    mseModelawal,mseModelCO,mseModelHL),nrow=2,ncol=3,byrow = T)
+colnames(akurasi) <- c("Model Awal", "Model Cochrane-Orcutt", "Model Hildreth-Lu")
+row.names(akurasi) <- c("SSE","MSE")
+akurasi
+```
+Hasil perbandingan menunjukkan bahwa model awal memiliki nilai SSE = 1.1179 dan MSE = 0.0745, yang lebih tinggi dibandingkan dengan model setelah koreksi autokorelasi. Baik metode Cochrane-Orcutt maupun Hildreth-Lu menghasilkan perbaikan signifikan dengan SSE ≈ 0.7507 dan MSE ≈ 0.0500, yang berarti terdapat penurunan galat total maupun rata-rata kuadrat. Hal ini mengindikasikan bahwa kedua metode mampu mengatasi masalah autokorelasi pada model awal, menghasilkan model yang lebih efisien dan reliabel, dengan performa hampir identik antara Cochrane-Orcutt dan Hildreth-Lu.
+
+# Kesimpulan
+Kesimpulannya, penanganan autokorelasi dengan Cochrane-Orcutt (CO) dan Hildreth-Lu (HL) sama-sama efektif karena keduanya berhasil menurunkan nilai SSE dan MSE dibandingkan model awal, yang berarti model menjadi lebih efisien dan akurat. Nilai SSE dan MSE yang dihasilkan kedua metode hampir identik, sehingga secara praktis tidak ada perbedaan signifikan dalam kinerjanya. Dengan demikian, baik metode CO maupun HL dapat digunakan untuk mengatasi autokorelasi, dan pemilihan di antara keduanya lebih didasarkan pada preferensi peneliti atau kemudahan implementasi, bukan pada hasil perbaikan model yang dihasilkan.
+
