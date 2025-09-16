@@ -1,0 +1,342 @@
+---
+title: "Tugas-Pertemuan-3"
+author:
+output:
+    rmdformats::readthedown
+---
+
+# Packages
+
+```{r, echo=FALSE}
+suppressPackageStartupMessages({
+  library(dLagM)
+  library(dynlm)
+  library(MLmetrics)
+  library(lmtest)
+  library(car)
+})
+
+```
+
+# Import Data
+
+```{r}
+library(readr)
+data <- read.csv("D:\\Doc Helmi\\Semester 5\\MPDW\\mpdw\\pertemuan 3\\NewDelhi_Air_quality.csv")
+data <- data[,c("AQI", "no2")]
+str(data)
+head(data)
+```
+
+# Pembagian Data
+
+```{r}
+#SPLIT DATA
+train<-data[1:57,]
+test<-data[58:72,]
+```
+
+```{r}
+#data time series
+train.ts<-ts(train)
+test.ts<-ts(test)
+data.ts<-ts(data)
+```
+
+
+# Model Koyck
+
+```{r}
+#MODEL KOYCK
+model.koyck <- koyckDlm(x = train$no2, y = train$AQI)
+summary(model.koyck)
+AIC(model.koyck)
+BIC(model.koyck)
+```
+
+Dari hasil tersebut, didapat bahwa peubah $x_t$ memiliki nilai $P-Value>0.05$ dan $y_{t-1}$ memiliki nilai $P-Value<0.05$ . Hal ini menunjukkan bahwa peubah $x_t$ tidak berpengaruh signifikan sedangkan $y_{t-1}$ berpengaruh signifikan terhadap $y$. Adapun model keseluruhannya adalah sebagai berikut
+
+$$
+\hat{Y_t}=2.46731+27.86813X_t+0.8598Y_{t-1}
+$$
+
+```{r}
+str(test)
+```
+
+### Peramalan dan Akurasi
+
+Berikut adalah hasil peramalan y untuk 5 periode kedepan menggunakan model koyck
+
+```{r}
+fore.koyck <- forecast(model = model.koyck, x=test$no2, h=length(test$AQI))
+fore.koyck
+mape.koyck <- MAPE(fore.koyck$forecasts, test$AQI)
+mape.koyck #data test
+#akurasi data training
+GoF(model.koyck)
+```
+
+# Regression with Distributed Lag
+
+### Pemodelan (Lag=2)
+
+```{r}
+model.dlm <- dlm(x = train$no2,y = train$AQI , q = 1)
+summary(model.dlm)
+AIC(model.dlm)
+BIC(model.dlm)
+```
+
+Dari hasil diatas, didapat bahwa $P-value$ dari intercept dan $x_{t-1}<0.05$. Hal ini menunjukkan bahwa intercept dan $x_{t-1}$ berpengaruh signifikan terhadap $y$. Adapun model keseluruhan yang terbentuk adalah sebagai berikut
+
+Dari hasil di atas, didapat bahwa $P-value$ dari intercept lebih kecil dari 0.05, sehingga dapat disimpulkan bahwa intercept berpengaruh signifikan terhadap $y$. Sementara itu, variabel $x_t$ dan $x_{t-1}$ memiliki nilai $P-value$ masing-masing sebesar 0.840 dan 0.105, sehingga pada taraf signifikansi 5% keduanya tidak signifikan. Namun, untuk variabel $x_{t-1}$, nilai $P-value$ yang mendekati 0.1 masih memungkinkan untuk dianggap signifikan pada taraf 10%.
+
+$$
+\hat{Y_t}=21.879-16.307X_t+132.953X_{t-1}
+$$
+
+### Peramalan dan Akurasi
+
+Berikut merupakan hasil peramalan $y$ untuk 5 periode kedepan
+
+```{r}
+fore.dlm <- forecast(model = model.dlm, x=test$no2, h=length(test$AQI))
+fore.dlm
+mape.dlm <- MAPE(fore.dlm$forecasts, test$AQI)
+mape.dlm
+#akurasi data training
+GoF(model.dlm)
+```
+
+### *Lag* Optimum
+
+```{r}
+#penentuan lag optimum 
+finiteDLMauto(formula = AQI ~ no2,
+              data = data.frame(train), q.min = 1, q.max = 10,
+              model.type = "dlm", error.type = "AIC", trace = TRUE)
+```
+
+Berdasarkan output tersebut, lag optimum didapatkan ketika lag=10. Selanjutnya dilakukan pemodelan untuk lag=10
+
+```{r}
+#model dlm dengan lag optimum
+model.dlm2 <- dlm(x = train$no2,y = train$AQI , q = 10)
+summary(model.dlm2)
+AIC(model.dlm2)
+BIC(model.dlm2)
+```
+
+Dari hasil tersebut hanya intersep yang berpengaruh signifikan terhadap taraf nyata 5% . Adapun keseluruhan model yang terbentuk adalah
+
+$$
+\hat{Y_t}=14.201+147.523X_t+...+13.052X_{t-10}
+$$
+
+Adapun hasil peramalan 5 periode kedepan menggunakan model tersebut adalah sebagai berikut
+
+```{r}
+#peramalan dan akurasi
+fore.dlm2 <- forecast(model = model.dlm2, x=test$no2, h=length(test$AQI))
+
+#akurasi data test
+mape.dlm2<- MAPE(fore.dlm2$forecasts, test$AQI)
+mape.dlm2
+
+#akurasi data training
+GoF(model.dlm2)
+```
+
+Model tersebut merupakan model yang sangat baik dengan nilai MAPE yang kurang dari 10%.
+
+# Model Autoregressive
+
+```{r}
+model.ardl <- ardlDlm(x = train$no2, y = train$AQI, p = 1 , q = 1)
+summary(model.ardl)
+AIC(model.ardl)
+BIC(model.ardl)
+```
+
+```{r}
+model.ardl <- ardlDlm(formula = AQI ~ no2, 
+                         data = train,p = 1 , q = 1)
+summary(model.ardl)
+AIC(model.ardl)
+BIC(model.ardl)
+```
+
+Hasil di atas menunjukkan bahwa dari uji-t, peubah $Y_{t-1}$ memiliki nilai-p < 0.05. Hal ini menunjukkan bahwa peubah $Y_{t-1}$ berpengaruh signifikan terhadap $Y_t$, sementara peubah $X_t$ dan $X_{t-1}$ tidak signifikan karena nilai-p ≥ 0.05. Adapun model keseluruhan yang terbentuk adalah sebagai berikut
+
+$$
+\hat{Y_t}=2.4757+26.6140X_t+1.1714X_{t-1}+0.8596Y_{t-1}
+$$
+
+### Peramalan dan Akurasi
+
+```{r}
+fore.ardl <- forecast(model = model.ardl, x=test$no2, h=15)
+fore.ardl
+```
+
+Data di atas merupakan hasil peramalan untuk 15 periode ke depan menggunakan Model Autoregressive dengan $p=1$ dan $q=1$.
+
+```{r}
+mape.ardl <- MAPE(fore.ardl$forecasts, test$AQI)
+mape.ardl
+#akurasi data training
+GoF(model.ardl)
+```
+
+Berdasarkan akurasi di atas, terlihat bahwa nilai MAPE keduanya terdapat perbedaan tetapi tidak jauh berbeda. Artinya, model regresi dengan distribusi lag ini tidak `overfitted` atau `underfitted`
+
+### *Lag* Optimum
+
+```{r}
+#penentuan lag optimum
+model.ardl.opt <- ardlBoundOrders(data = data.frame(data), ic = "AIC", 
+                                  formula = AQI ~ no2 )
+model.ardl.opt
+min_p=c()
+for(i in 1:6){
+  min_p[i]=min(model.ardl.opt$Stat.table[[i]])
+}
+q_opt=which(min_p==min(min_p, na.rm = TRUE))
+p_opt=which(model.ardl.opt$Stat.table[[q_opt]] == 
+              min(model.ardl.opt$Stat.table[[q_opt]], na.rm = TRUE))
+data.frame("q_optimum" = q_opt, "p_optimum" = p_opt, 
+           "AIC"=model.ardl.opt$min.Stat)
+```
+
+Dari tabel di atas, dapat terlihat bahwa nilai AIC terendah didapat ketika $p=14$ dan $q=6$, yaitu sebesar `133.8784`. Artinya, model autoregressive optimum didapat ketika $p=14$ dan $q=6$.
+
+
+# Pemodelan DLM & ARDL
+
+
+```{r}
+# sama dengan model dlm q=1
+cons_lm1 <- dynlm(AQI ~ no2 + L(no2), data = train.ts)
+
+# sama dengan model ardl p=1 q=0
+cons_lm2 <- dynlm(AQI ~ no2 + L(AQI), data = train.ts)
+
+# sama dengan ardl p=1 q=1
+cons_lm3 <- dynlm(AQI ~ no2 + L(no2) + L(AQI), data = train.ts)
+
+# sama dengan dlm p=2
+cons_lm4 <- dynlm(AQI ~ no2 + L(no2) + L(no2, 2), data = train.ts)
+```
+
+### Ringkasan Model
+
+Berikut adalah ringkasan hasil estimasi dari masing-masing model:
+
+```{r}
+summary(cons_lm1)
+summary(cons_lm2)
+summary(cons_lm3)
+summary(cons_lm4)
+```
+
+### SSE
+
+Selain ringkasan hasil, kita juga bisa menghitung nilai SSE dari masing-masing model.
+
+```{r}
+deviance(cons_lm1)
+deviance(cons_lm2)
+deviance(cons_lm3)
+deviance(cons_lm4)
+```
+
+Semakin kecil nilai SSE, berarti model lebih baik dalam menyesuaikan data (karena error lebih kecil).
+
+### Ui encomptest
+
+```{r}
+#uji model
+if(require("lmtest")) encomptest(cons_lm1, cons_lm2)
+
+```
+
+-   Model 1 : p-value <2e-16 (< 0.05). Artinya, penambahan lag dari Y (`L(Yt)`) memberikan peningkatan signifikan.\
+Dengan demikian, Model 1 saja tidak memadai, karena perlu ditambah dengan lag Y
+
+-   Model 2 : p-value = 0.9762 (> 0.05).\
+    Artinya, penambahan lag dari X (`L(Xt)`) pada Model 2 tidak memberikan peningkatan signifikan.\
+Dengan demikian, Model 2 sudah memadai tanpa tambahan lag X.
+
+#### Uji Autokorelasi Residual
+
+```{r}
+#durbin watson
+dwtest(cons_lm1)
+dwtest(cons_lm2)
+dwtest(cons_lm3)
+dwtest(cons_lm4)
+```
+Hasil uji Durbin–Watson menunjukkan bahwa seluruh model mengalami masalah autokorelasi positif yang signifikan (p-value < 0.05), dengan Model 1 (DW = 0.237) dan Model 4 (DW = 0.248) memiliki autokorelasi yang sangat kuat, sedangkan Model 2 (DW = 1.065) dan Model 3 (DW = 1.064) relatif lebih baik meskipun tetap menunjukkan adanya autokorelasi. Dengan demikian, meskipun Model 2 dan 3 lebih mendekati nilai DW = 2, secara keseluruhan semua model belum sepenuhnya terbebas dari autokorelasi positif.
+
+#### Uji Heterogenitas
+
+```{r}
+bptest(cons_lm1)
+bptest(cons_lm2)
+bptest(cons_lm3)
+bptest(cons_lm4)
+```
+Hasil uji Breusch–Pagan pada keempat model menunjukkan bahwa seluruh nilai p-value lebih besar dari 0.05 (cons_lm1 = 0.1156, cons_lm2 = 0.9134, cons_lm3 = 0.8872, cons_lm4 = 0.1237), sehingga tidak terdapat bukti yang signifikan untuk menolak hipotesis nol homoskedastisitas. Dengan demikian, dapat disimpulkan bahwa semua model tidak mengalami masalah heteroskedastisitas dan varians error dapat dianggap konstan.
+
+
+#### Uji Normalitas
+
+H0: Residual berdistribusi normal.
+
+H1: Residual tidak berdistribusi normal.
+
+```{r}
+shapiro.test(residuals(cons_lm1))
+shapiro.test(residuals(cons_lm2))
+shapiro.test(residuals(cons_lm3))
+shapiro.test(residuals(cons_lm4))
+```
+Semua Model berdistribusi normal karena p-value > 0.05
+
+# Perbandingan Model
+
+Membuat tabel ringkas akurasi model berdasarkan nilai MAPE (Mean Absolute Percentage Error).
+
+```{r}
+akurasi <- matrix(c(mape.koyck, mape.dlm, mape.dlm2, mape.ardl))
+row.names(akurasi)<- c("Koyck","DLM 1","DLM 2","Autoregressive")
+colnames(akurasi) <- c("MAPE")
+akurasi
+```
+
+Berdasarkan nilai MAPE, model yang paling optimum adalah Model Koyck karena memiliki nilai MAPE terkecil (0.1182) dibandingkan dengan model lainnya, sehingga dapat dikatakan lebih akurat dalam melakukan prediksi.
+
+### Plot
+
+```{r}
+par(mfrow=c(1,1))  # atur layout grafik tunggal
+
+# plot data aktual
+plot(test$no2, test$AQI, type="b", col="black", ylim=c(15,40))
+
+# tambahkan garis ramalan dari masing-masing model
+points(test$no2, fore.koyck$forecasts, col="red");   lines(test$no2, fore.koyck$forecasts, col="red")
+points(test$no2, fore.dlm$forecasts, col="blue");    lines(test$no2, fore.dlm$forecasts, col="blue")
+points(test$no2, fore.dlm2$forecasts, col="orange"); lines(test$no2, fore.dlm2$forecasts, col="orange")
+points(test$no2, fore.ardl$forecasts, col="green");  lines(test$no2, fore.ardl$forecasts, col="green")
+
+# legenda model
+legend("topleft",
+       c("Aktual", "Koyck","DLM 1","DLM 2", "Autoregressive"),
+       lty=1, col=c("black","red","blue","orange","green"), cex=0.8)
+
+```
+
+
+Dari plot terlihat semua model mengikuti arah kenaikan AQI saat NO₂ meningkat, namun sepanjang sebagian besar rentang garis prediksi berada di atas titik aktual—indikasi bias over-forecast, paling jelas pada NO₂ rendah. DLM2 (oranye) menampilkan deviasi terbesar terhadap aktual (terutama awal–tengah rentang), sedangkan DLM1 (biru) juga konsisten terlalu tinggi. Koyck (merah) dan Autoregressive (hijau) cenderung paling dekat ke data aktual: Koyck lebih tepat mengikuti kemiringan kenaikan, sementara Autoregressive lebih datar (kurang menangkap variasi) tetapi mendekati aktual di bagian akhir. Di NO₂ tinggi, seluruh model makin konvergen ke nilai aktual—secara visual konsisten dengan pemeringkatan MAPE (Koyck ≈ Autoregressive terbaik, lalu DLM1, dan DLM2 terjauh).
