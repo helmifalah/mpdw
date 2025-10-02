@@ -1,0 +1,148 @@
+---
+title: "Tugas-Pertemuan-5"
+author: "Helmi Falah"
+date: "2025-10-02"
+output: 
+  rmdformats::readthedown
+---
+
+# Import Libraries
+```{r, message = FALSE, warning = FALSE}
+library("forecast")
+library("graphics")
+library("TTR")
+library("TSA")
+library("rio")
+library("ggplot2")
+library("readxl")
+```
+
+# Import Data
+```{r}
+tesladf <- read_excel("C:\\Users\\Helmi Falah\\Documents\\MPDW\\mpdw\\pertemuan 2\\TSLA_weekly.xlsx")
+head(tesladf)
+```
+
+```{r}
+#ambil variabel Periode dan Close
+tesladf <- tesladf[199:300, c("Tanggal", "Close")]
+tesladf$Periode <- seq(1:nrow(tesladf))
+tesladf<-tesladf[,c("Periode","Tanggal","Close")]
+head(tesladf)
+str(tesladf)
+```
+
+# Plot Time Series
+
+
+```{r}
+# Buat time series dari kolom Close
+tesla.ts <- ts(tesladf$Close, start = 1, frequency = 1)
+
+# Plot time series
+ts.plot(tesla.ts,
+        xlab = "Periode Waktu",
+        ylab = "Harga Penutupan (Close)",
+        main = "Time Series Harga Saham Tesla")
+```
+
+Grafik Time Series harga penutupan saham Tesla menunjukkan bahwa data belum stasioner. Rata-rata berubah seiring waktu dengan pola naik-turun yang jelas, sementara varians relatif stabil meskipun ada fluktuasi tajam pada beberapa periode. Tidak terlihat pola musiman, hanya tren bergelombang. Dengan demikian, data cenderung tidak stasioner terutama pada aspek mean, sehingga perlu dilakukan transformasi seperti differencing dan diuji lebih lanjut secara formal.
+
+# Pemeriksaan Stasioneritas
+
+## Stasioneritas dalam Rataan
+
+### Plot ACF
+
+```{r}
+acf(tesla.ts, main="ACF Harga Saham Tesla")
+```
+
+Dari plot ACF harga saham Tesla terlihat bahwa autokorelasi awal (lag 1 hingga sekitar lag 6) bernilai positif tinggi dan menurun secara perlahan hingga melewati batas signifikansi. Pola slow decay seperti ini menjadi indikasi kuat bahwa data belum stasioner, khususnya dalam rata-rata (mean). Jika data sudah stasioner, seharusnya nilai ACF cepat turun menuju nol setelah beberapa lag pertama.
+
+### Uji ADF
+
+```{r}
+tseries::adf.test(tesla.ts)
+```
+Hasil Augmented Dickey-Fuller (ADF) Test pada data time series harga penutupan saham Tesla menunjukkan nilai statistik uji sebesar -3.2128 dengan p-value = 0.08951. Karena p-value lebih besar dari taraf signifikansi umum (α = 0,05), maka hipotesis nol (null hypothesis) yang menyatakan bahwa data mengandung akar unit (non-stasioner) tidak dapat ditolak. Artinya, data masih belum stasioner pada taraf signifikansi 5%. Namun, pada taraf signifikansi 10%, hasil ini bisa dianggap mendekati stasioneritas. Dengan demikian, secara umum data cenderung belum stasioner, sehingga diperlukan transformasi lanjutan seperti differencing agar memenuhi asumsi stasioner sebelum dilakukan pemodelan ARIMA.
+
+## Stasioneritas Ragam
+
+### Plot Box-Cox
+
+```{r}
+bc <- MASS::boxcox(tesla.ts ~ tesladf$Periode, lambda = seq(-2, 2, 0.1))
+lambda_optimal <- bc$x[which.max(bc$y)]
+lambda_optimal
+```
+
+```{r}
+# Selang kepercayaan 95% untuk lambda
+ci_lambda <- bc$x[bc$y > max(bc$y) - 0.5 * qchisq(0.95, 1)]
+
+# Batas bawah dan batas atas
+ci_lower <- min(ci_lambda)
+ci_upper <- max(ci_lambda)
+
+c(Batas_Bawah = ci_lower, Batas_Atas = ci_upper)
+```
+
+Hasil uji Box-Cox menunjukkan bahwa nilai lambda optimal berada pada 1,39 dengan selang kepercayaan 95% antara 0,06 hingga 2,00. Karena nilai λ = 1 (tanpa transformasi) masih termasuk dalam selang kepercayaan, maka dapat disimpulkan bahwa varians data sudah relatif stabil sehingga tidak diperlukan transformasi khusus untuk menstabilkan ragam. Dengan kata lain, data cenderung sudah homoskedastis. Namun demikian, meskipun varians stabil, hasil uji sebelumnya dengan Augmented Dickey-Fuller (ADF) menunjukkan bahwa data belum stasioner dalam mean, sehingga perlu dilakukan transformasi seperti differencing untuk mencapai stasioneritas secara keseluruhan.
+
+# Penanganan Ketidakstasioeran data
+
+Dari pengujian data didapatkan bahwa data belum stasioner terutama pada aspek rataan. Oleh karena itu, perlu dilakukan transformasi differencing untuk menstabilkan rata-rata.
+
+## Differencing
+
+```{r}
+tesla.diff1 <- diff(tesla.ts, differences = 1)
+plot(tesla.diff1, main = "First Differencing Harga Saham Tesla",
+     ylab = "Differenced Close", xlab = "Periode Waktu")
+```
+Hasil first differencing pada data harga penutupan saham Tesla menunjukkan bahwa pola fluktuasi sudah lebih berpusat di sekitar nilai nol dengan amplitudo yang relatif stabil sepanjang periode. Tidak terlihat lagi adanya tren naik atau turun yang jelas seperti pada data aslinya, sehingga rata-rata (mean) dapat dikatakan sudah konstan dari waktu ke waktu. Varians juga tampak cukup stabil, dengan pergerakan yang berulang-ulang di kisaran nilai yang hampir sama.
+
+## Pemeriksaan Stasioneritas dalam Rataan Setelah Differencing
+
+### Plot ACF
+```{r}
+acf(tesla.diff1, main="ACF First Differencing Harga Saham Tesla")
+```
+
+Plot ACF setelah first differencing pada data harga penutupan saham Tesla memperlihatkan bahwa sebagian besar lag sudah berada di dalam batas signifikansi, dengan nilai autokorelasi yang kecil dan cepat mendekati nol. Hal ini menandakan bahwa pola slow decay yang muncul pada data asli sudah hilang, sehingga data kini lebih bersifat acak dan tidak lagi menunjukkan tren jangka panjang. Dengan demikian, proses differencing satu kali berhasil membuat data menjadi lebih stasioner dalam mean.
+
+### Uji ADF
+```{r}
+tseries::adf.test(tesla.diff1)
+```
+Berdasarkan uji ADF tersebut, didapat p-value sebesar 0.01 yang lebih kecil dari taraf nyata 5% sehingga tolak H0 dan menandakan bahwa data sudah stasioner dalam rataan. Hal ini sesuai dengan hasil eksplorasi menggunakan plot time series dan plot ACF.
+
+## Pemeriksaan Stasioneritas Ragam Setelah Differencing
+
+### Plot Box-Cox
+```{r}
+#Geser data agar positif
+tesla.diff1 <- tesla.diff1 - min(tesla.diff1) + 1
+# Box-Cox Transformation untuk data hasil differencing
+bc <- MASS::boxcox(tesla.diff1 ~ tesladf$Periode[-max(tesladf$Periode)], 
+                   lambda = seq(-2, 2, 0.1),
+                   main = "Box-Cox Transformation (First Differencing)")
+
+# Cari lambda optimal
+lambda_optimal <- bc$x[which.max(bc$y)]
+lambda_optimal
+
+# Selang kepercayaan 95% untuk lambda
+ci_lambda <- bc$x[bc$y > max(bc$y) - 0.5 * qchisq(0.95, 1)] 
+# Batas bawah dan batas atas
+ci_lower <- min(ci_lambda)
+ci_upper <- max(ci_lambda)
+c(Batas_Bawah = ci_lower, Batas_Atas = ci_upper)
+```
+
+Hasil uji Box-Cox pada data hasil first differencing menunjukkan bahwa nilai lambda optimal berada pada 0,77 dengan selang kepercayaan 95% antara -0,20 hingga 2,00. Karena nilai λ = 1 (tanpa transformasi) masih termasuk dalam selang kepercayaan, maka dapat disimpulkan bahwa data sudah stasioner dalam ragam, sehingga tidak perlu transformasi lagi.
+
+# Kesimpulan
+
+Berdasarkan analisis yang telah dilakukan, dapat disimpulkan bahwa data harga penutupan saham Tesla awalnya belum stasioner terutama pada aspek rataan (mean), meskipun variansnya sudah relatif stabil. Setelah dilakukan transformasi first differencing, data menjadi stasioner dalam rataan dan stasioner dalam ragam.
